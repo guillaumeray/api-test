@@ -1,39 +1,43 @@
 import json
+import requests
 
 """
 Utils functions
 """
-def assert_basic_data_structure(data):
-    assert 'id' in data, "Missing 'id' in response"
-    assert 'object' in data, "Missing 'object' in response"
-    assert 'created' in data, "Missing 'created' in response"
-    assert 'model' in data, "Missing 'model' in response"
-    assert 'choices' in data, "Missing 'choices' in response"
-    assert len(data['choices']) > 0, "No choices returned"
-    assert 'message' in data['choices'][0], "Missing 'message' in choices"
-    assert 'content' in data['choices'][0]['message'], "Missing 'content' in message"
-    assert 'finish_reason' in data['choices'][0], "Missing 'finish_reason' in choices"
-    assert 'usage' in data, "Missing 'usage' in response"
-    assert 'prompt_tokens' in data['usage'], "Missing 'prompt_tokens' in usage"
-    assert 'total_tokens' in data['usage'], "Missing 'total_tokens' in usage"
-    assert 'completion_tokens' in data['usage'], "Missing 'completion_tokens' in usage"
+def assert_basic_data_structure(data: dict) -> None:
+    required_fields = [
+        'id', 'object', 'created', 'model', 'choices', 'usage'
+    ]
+    choice_fields = ['message', 'finish_reason']
+    usage_fields = ['prompt_tokens', 'total_tokens', 'completion_tokens']
 
-def get_model_token_limit(model):
-    if model == "mistral-large-latest":
-        return 128 * 1000
-    elif model == "mistral-small-latest":
-        return 32 * 1000
-    elif model == "ministral-8b-latest":
-        return 128 * 1000
-    elif model == "ministral-3b-latest":
-        return 128 * 1000
-    else: 
+    for field in required_fields:
+        assert field in data, f"Missing '{field}' in response"
+
+    assert len(data['choices']) > 0, "No choices returned"
+    for field in choice_fields:
+        assert field in data['choices'][0], f"Missing '{field}' in choices"
+
+    assert 'content' in data['choices'][0]['message'], "Missing 'content' in message"
+
+    for field in usage_fields:
+        assert field in data['usage'], f"Missing '{field}' in usage"
+
+def get_model_token_limit(model: str) -> int:
+    model_limits = {
+        "mistral-large-latest": 128 * 1000,
+        "mistral-small-latest": 32 * 1000,
+        "ministral-8b-latest": 128 * 1000,
+        "ministral-3b-latest": 128 * 1000
+    }
+    if model in model_limits:
+        return model_limits[model]
+    else:
         raise ValueError(f"Invalid model: {model}")
 
-def is_valid_json(content):
+def is_valid_json(content: str) -> bool:
     try:
         json.loads(content)
         return True
     except ValueError:
         return False
-

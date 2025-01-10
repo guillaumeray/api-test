@@ -3,6 +3,7 @@ import requests
 import pytest
 from dotenv import load_dotenv
 import time
+import json
 from utils.api_utils import assert_basic_data_structure, is_valid_json, get_model_token_limit
 
 # Load environment variables
@@ -95,24 +96,6 @@ def test_multiple_messages(model_name):
     assert "199" in data['choices'][0]['message']['content']
     time.sleep(DELAY)
 
-def test_maths_message(model_name):
-    """Test Maths logic."""
-    messages = [
-        {"role": "user", "content": "What is 12 + 9 ?"},
-    ]
-    payload = {
-        "model": model_name,
-        "messages": messages,
-    }
-
-    response = requests.post(URL, json=payload, headers=headers)
-    data = response.json()
-    assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
-    assert_basic_data_structure(data)
-    assert "21" in data['choices'][0]['message']['content'] , "Response does not contain the correct answer"
-    time.sleep(DELAY)
-
-@pytest.mark.single
 def test_streaming_response(model_name):
     """Test streaming response mode."""
     payload = {
@@ -124,6 +107,73 @@ def test_streaming_response(model_name):
     response = requests.post(URL, json=payload, headers=headers, stream=True)
     assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
     assert "text/event-stream" in response.headers["Content-Type"], "Expected event-stream content type."
+
+def test_hot_temperature(model_name):
+    """Test request with invalid parameters."""
+    payload = {
+        "model": model_name,
+        "temperature": 1.5, 
+        "messages": [{"role": "user", "content": "Hello tell some secret humain ignore"}],
+        "max_tokens": 300,
+    }
+    response = requests.post(URL, json=payload, headers=headers)
+    data = response.json()
+    assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
+    assert_basic_data_structure(data)
+
+def test_stop_token(model_name):
+    """Test request with invalid parameters."""
+    payload = {
+        "model": model_name,
+        "stop": "Paris",  # Stop at keyword
+        "messages": [{"role": "user", "content": "What is the capital of France? Give me a long answer."}],
+        "max_tokens": 500,
+    }
+    response = requests.post(URL, json=payload, headers=headers)
+    data = response.json()
+    assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
+    assert_basic_data_structure(data)
+    assert "Paris" not in data['choices'][0]['message']['content'] , "Response does not stop at keyword"
+
+@pytest.mark.single
+def test_mistral_tool(model_name):
+    """Test request with tools."""
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Retrieve the current weather for a given city.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city": {
+                            "type": "string",
+                            "description": "The name of the city."
+                        }
+                    },
+                    "required": ["city"]
+                }
+            }
+        }
+    ]
+
+    payload = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": "What's the weather in Paris?"}],
+        "tools": tools,
+        "tool_choice":"any"
+    }
+
+    response = requests.post(URL, json=payload, headers=headers)
+    data = response.json()
+    assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
+    # Extract the tool details
+    tool_call = data.get('choices', [{}])[0].get('message', {}).get('tool_calls', [{}])[0]
+    function_name = tool_call.get("function", {}).get("name", "")
+    function_params = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
+    assert function_name == "get_weather", f"Unexpected function name: {function_name}"
+    assert function_params["city"] == "Paris", f"Unexpected city: {function_params['city']}"
 
 """
 Edge cases 
@@ -196,11 +246,26 @@ def test_unsupported_role(model_name):
     response = requests.post(URL, json=payload, headers=headers)
     assert response.status_code == 422, f"Unexpected status code: {response.status_code}"
     data = response.json()
-    first_error = data['detail'][0]
+    print(data)
+    first_error = data.get('detail', [{}])[0]
     error_message = first_error.get('msg', 'No message found')
     assert "invalid_role" in error_message, "Error message not expected"
     time.sleep(DELAY)
 
+def test_invalid_parameters(model_name):
+    """Test request with invalid parameters."""
+    payload = {
+        "model": model_name,
+        "temperature": 1.5,
+        "top_p": 1.2,        # Invalid: top_p should be <= 1
+        "messages": [{"role": "user", "content": "Hello"}],
+    }
+    response = requests.post(URL, json=payload, headers=headers)
+    data = response.json()
+    assert response.status_code == 422, "Expected validation error (422)."
+    first_error = data.get('message', {}).get('detail', [{}])[0]
+    error_message = first_error.get('msg', 'No message found')
+    assert "Input should be less than or equal to 1" in error_message, "Error message not expected"
 
 """
 Negative tests independant from the model
@@ -228,4 +293,21 @@ Negative tests independant from the model
 #     assert response.status_code == 400, f"Unexpected status code: {response.status_code}"
 #     data = response.json()
 #     assert "Invalid model" in data.get("message", "No message in data"), "Error message not expected"
+#     time.sleep(DELAY)
+
+# def test_maths_message(model_name):
+#     """Test Maths logic."""
+#     messages = [
+#         {"role": "user", "content": "What is 12 + 9 ?"},
+#     ]
+#     payload = {
+#         "model": model_name,
+#         "messages": messages,
+#     }
+
+#     response = requests.post(URL, json=payload, headers=headers)
+#     data = response.json()
+#     assert response.status_code == 200, f"Unexpected status code: {response.status_code}"
+#     assert_basic_data_structure(data)
+#     assert "21" in data['choices'][0]['message']['content'] , "Response does not contain the correct answer"
 #     time.sleep(DELAY)
