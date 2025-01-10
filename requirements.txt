@@ -1,5 +1,6 @@
 requests
 python-dotenv
 pytest
+pytest-html
 requests
 locust

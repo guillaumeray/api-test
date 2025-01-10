@@ -1,3 +1,4 @@
 mistralapi/
 .env
 **/__pycache__/
+report/**
